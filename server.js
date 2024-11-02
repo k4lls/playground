@@ -14,14 +14,15 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const port = process.env.PORT || 3000; // Use Heroku's assigned port or 3000 for local development
 const httpServer = http.createServer(app);
 
-// Create a WebSocket server on a different port
-const wss = new WebSocket.Server({ port: 3001 });
+// Create a WebSocket server on the same HTTP server (Heroku requires one port for both)
+const wss = new WebSocket.Server({ server: httpServer });
 
 wss.on("connection", (ws) => {
-  ws.on("message", async (message) => {
-    const { question } = JSON.parse(message);
+  ws.on("message", async (msg) => {
+    const { question } = JSON.parse(msg);
 
     try {
       const assistant = await openai.beta.assistants.retrieve(process.env.ASSISTANT_ID);
@@ -29,20 +30,17 @@ wss.on("connection", (ws) => {
 
       const thread = await openai.beta.threads.create();
 
-      const message = await openai.beta.threads.messages.create(thread.id, {
+      const userMessage = await openai.beta.threads.messages.create(thread.id, {
         role: "user",
         content: question,
       });
 
-      const run = openai.beta.threads.runs
+      openai.beta.threads.runs
         .stream(thread.id, {
           assistant_id: assistant.id,
         })
         .on("textDelta", (textDelta) => {
-          let content = textDelta.value;
-
-          // Ensure it's in a Markdown-friendly format if needed
-          //   content = `**Response**: ${content}`; // Wrap with Markdown for bold or other formatting
+          const content = textDelta.value;
           ws.send(JSON.stringify({ role: "assistant", content }));
         })
         .on("end", () => {
@@ -53,8 +51,11 @@ wss.on("connection", (ws) => {
       ws.send(JSON.stringify({ error: "Failed to process the query." }));
     }
   });
+
+  ws.on("error", (err) => console.error("WebSocket error:", err));
+  ws.on("close", () => console.log("WebSocket connection closed"));
 });
 
-httpServer.listen(3000, () => {
-  console.log("HTTP server running on http://localhost:3000");
+httpServer.listen(port, () => {
+  console.log(`HTTP and WebSocket server running on port ${port}`);
 });
