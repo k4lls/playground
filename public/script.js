@@ -12,7 +12,11 @@ function sendMessage() {
   spinner.style.display = "block"; // Show the spinner
 
   // Establish WebSocket connection
-  const ws = new WebSocket("ws://localhost:3001");
+  const ws = new WebSocket(
+    location.protocol === "https:" 
+      ? "wss://app-playground-36d6539060bc.herokuapp.com"  // Replace 'your-app-name' with your actual Heroku app name
+      : "ws://localhost:3001"
+  );
 
   ws.onopen = function () {
     ws.send(JSON.stringify({ question }));
